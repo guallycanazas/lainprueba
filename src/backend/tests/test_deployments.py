@@ -4,7 +4,8 @@ from pathlib import Path
 
 import yaml
 
-from backend.app.models.deployment import CommandResult, DeploymentStatus
+from backend.app.models.deployment import CommandResult, ContainerStatus, DeploymentStatus
+from backend.app.services.deployment_service import DeploymentConflictError
 
 
 def test_public_catalog_contains_data_and_guarded_rf_scenarios(client):
@@ -287,6 +288,50 @@ def test_start_conflict_reports_active_scenario(deployment_service, monkeypatch)
         assert getattr(exc, "active_scenario", None) == "5g-sa"
     else:
         raise AssertionError("Expected conflict")
+
+
+def test_shared_4g_epc_does_not_conflict_with_stopped_nsa_rf(deployment_service, monkeypatch):
+    command = CommandResult(
+        command=["status"], cwd=".", exit_code=0, stdout="", stderr="",
+        started_at="2026-01-01T00:00:00Z", finished_at="2026-01-01T00:00:00Z", duration_ms=0,
+    )
+
+    def fake_status(scenario: str):
+        if scenario == "5g-nsa-x310":
+            containers = [ContainerStatus(name="lain5g-lab-4g-lte-x310-mme", service="mme", status="Up", running=True)]
+            return DeploymentStatus(id=scenario, status="running", containers=containers, checked_at="2026-01-01T00:00:00Z", command=command, output="")
+        return DeploymentStatus(id=scenario, status="stopped", containers=[], checked_at="2026-01-01T00:00:00Z", command=command, output="")
+
+    deployment_service.settings.dry_run = False
+    monkeypatch.setattr(deployment_service, "get_status", fake_status)
+    definition = deployment_service._definition("4g-lte-x310")
+
+    deployment_service._ensure_no_conflict(definition)
+
+
+def test_shared_4g_epc_still_conflicts_with_active_nsa_rf(deployment_service, monkeypatch):
+    command = CommandResult(
+        command=["status"], cwd=".", exit_code=0, stdout="", stderr="",
+        started_at="2026-01-01T00:00:00Z", finished_at="2026-01-01T00:00:00Z", duration_ms=0,
+    )
+
+    def fake_status(scenario: str):
+        containers = []
+        state = "stopped"
+        if scenario == "5g-nsa-x310":
+            state = "running"
+            containers = [ContainerStatus(name="lain5g-lab-5g-nsa-x310-enb", service="enb-nsa-x310", status="Up", running=True)]
+        return DeploymentStatus(id=scenario, status=state, containers=containers, checked_at="2026-01-01T00:00:00Z", command=command, output="")
+
+    deployment_service.settings.dry_run = False
+    monkeypatch.setattr(deployment_service, "get_status", fake_status)
+
+    try:
+        deployment_service._ensure_no_conflict(deployment_service._definition("4g-lte-x310"))
+    except DeploymentConflictError as exc:
+        assert getattr(exc, "active_scenario", None) == "5g-nsa-x310"
+    else:
+        raise AssertionError("Expected conflict while the NSA RF service is active")
 
 
 def test_failed_validation_returns_new_failure_evidence(deployment_service, run_service, monkeypatch):

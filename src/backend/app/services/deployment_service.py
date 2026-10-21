@@ -338,6 +338,15 @@ class DeploymentService:
                 continue
             status = self.get_status(other.id).status
             if status in {"running", "partial"}:
+                if {other.id, definition.id} == {"4g-lte-x310", "5g-nsa-x310"}:
+                    other_status = self.get_status(other.id)
+                    rf_marker = self.settings.project_root / other.deployment_path / ".rf-active"
+                    rf_service_running = any(
+                        container.running and container.service == other.rf_service
+                        for container in other_status.containers
+                    )
+                    if not rf_marker.is_file() and not rf_service_running:
+                        continue
                 raise DeploymentConflictError("Another laboratory scenario is currently running.", active_scenario=other.id)
 
     def _ensure_components(self, definition: DeploymentDefinition, core_only: bool = False) -> None:
