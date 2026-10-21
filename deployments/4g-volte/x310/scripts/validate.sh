@@ -35,16 +35,42 @@ write_json(){
 }
 if [ "$rf_session_active" = true ]; then
   session_run_id="$(sed -n 's/^run_id=//p' "$scenario_dir/.rf-active" 2>/dev/null | head -n1 || true)"
-  session_preflight="$repo_dir/runs/$session_run_id/preflight.json"
+  session_run_dir="$repo_dir/runs/$session_run_id"
+  session_preflight="$session_run_dir/preflight.json"
+  session_hardware_log="$session_run_dir/logs/hardware-check.log"
+  session_uhd_log="$session_run_dir/logs/uhd-check.log"
+  session_fpga_log="$session_run_dir/logs/fpga-check.log"
   if [[ "$session_run_id" =~ ^run-[0-9]{8}-[0-9]{6}$ ]] && [ -f "$session_preflight" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"PASS"' "$session_preflight"; then
     add rf_preflight PASS "RF preflight passed before the active session; not rerun while X310 is in use"
   else
     add rf_preflight FAIL "Active RF session has no passing preflight artifact; hardware probes skipped while X310 is in use"
   fi
-  add hardware_detected NOT_TESTED "X310 discovery skipped while enb-x310 is using the SDR"
-  add ethernet_link NOT_TESTED "Ethernet probe skipped while enb-x310 is using the SDR"
-  add uhd_available NOT_TESTED "UHD probe skipped while enb-x310 is using the SDR"
-  add uhd_fpga_compatible NOT_TESTED "FPGA probe skipped while enb-x310 is using the SDR"
+  if [ -f "$session_hardware_log" ] && grep -Eiq 'x310_ping[[:space:]]+PASS|uhd_find_devices[[:space:]]+PASS' "$session_hardware_log"; then
+    add hardware_detected PASS "X310 detected during preflight for $session_run_id; live discovery skipped while in use"
+  else
+    add hardware_detected NOT_TESTED "X310 discovery skipped while enb-x310 is using the SDR"
+  fi
+  if [ -f "$session_hardware_log" ] && grep -Eq 'ethernet_link[[:space:]]+PASS' "$session_hardware_log"; then
+    add ethernet_link PASS "Compatible host subnet confirmed during preflight; live probe skipped"
+  elif [ -f "$session_hardware_log" ] && grep -Eq 'ethernet_link[[:space:]]+WARNING' "$session_hardware_log"; then
+    add ethernet_link WARNING "Host subnet was not proven during preflight; live probe skipped while SDR is in use"
+  else
+    add ethernet_link NOT_TESTED "Ethernet probe skipped while enb-x310 is using the SDR"
+  fi
+  if [ -f "$session_uhd_log" ] && grep -Eiq '^uhd_probe PASS' "$session_uhd_log"; then
+    add uhd_available PASS "UHD probe passed before the active session; live probe skipped"
+  elif [ -f "$session_uhd_log" ] && grep -Eiq '^uhd_probe FAIL' "$session_uhd_log"; then
+    add uhd_available FAIL "UHD probe failed during preflight before the active session"
+  else
+    add uhd_available NOT_TESTED "UHD probe skipped while enb-x310 is using the SDR"
+  fi
+  if [ -f "$session_fpga_log" ] && grep -Eq 'fpga_status=compatible' "$session_fpga_log"; then
+    add uhd_fpga_compatible PASS "FPGA compatibility confirmed during preflight; live probe skipped"
+  elif [ -f "$session_fpga_log" ] && grep -Eq 'fpga_status=incompatible' "$session_fpga_log"; then
+    add uhd_fpga_compatible FAIL "FPGA incompatibility found during preflight"
+  else
+    add uhd_fpga_compatible NOT_TESTED "FPGA probe skipped while enb-x310 is using the SDR"
+  fi
 else
   "$(dirname "${BASH_SOURCE[0]}")/hardware-check.sh" >"$run_dir/logs/hardware-check.log" 2>&1 && add hardware_detected PASS "X310 detected" || add hardware_detected FAIL "X310 not detected"
   grep -q 'ethernet_link.*PASS' "$run_dir/logs/hardware-check.log" && add ethernet_link PASS "compatible local subnet found" || add ethernet_link WARNING "ethernet not proven compatible"
