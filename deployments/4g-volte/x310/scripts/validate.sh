@@ -14,6 +14,8 @@ add(){ checks+=("$1|$2|$3"); printf '%-26s %s %s\n' "$1" "$2" "$3"; }
 json_escape(){ local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; printf '%s' "$s"; }
 compose(){ (cd "$scenario_dir" && docker compose --env-file ../common/.env -f docker-compose.yml --profile rf "$@"); }
 running(){ [ -n "$(compose ps --status running -q "$1" 2>/dev/null)" ]; }
+rf_session_active=false
+if running enb-x310; then rf_session_active=true; fi
 write_json(){
   local status="PASS"
   for c in "${checks[@]}"; do IFS='|' read -r _ st _ <<< "$c"; [ "$st" = FAIL ] && status="FAIL"; done
@@ -31,14 +33,28 @@ write_json(){
   echo "Validation written to ${run_dir#$repo_dir/}/validation.json"
   [ "$status" = PASS ]
 }
-"$(dirname "${BASH_SOURCE[0]}")/hardware-check.sh" >"$run_dir/logs/hardware-check.log" 2>&1 && add hardware_detected PASS "X310 detected" || add hardware_detected FAIL "X310 not detected"
-grep -q 'ethernet_link.*PASS' "$run_dir/logs/hardware-check.log" && add ethernet_link PASS "compatible local subnet found" || add ethernet_link WARNING "ethernet not proven compatible"
-"$(dirname "${BASH_SOURCE[0]}")/uhd-check.sh" >"$run_dir/logs/uhd-check.log" 2>&1 && add uhd_available PASS "UHD probe passed" || add uhd_available FAIL "UHD probe failed"
-"$(dirname "${BASH_SOURCE[0]}")/fpga-check.sh" "$run_dir/logs/uhd-check.log" >"$run_dir/logs/fpga-check.log" 2>&1 && add uhd_fpga_compatible PASS "FPGA compatible" || add uhd_fpga_compatible FAIL "FPGA compatibility unknown"
+if [ "$rf_session_active" = true ]; then
+  session_run_id="$(sed -n 's/^run_id=//p' "$scenario_dir/.rf-active" 2>/dev/null | head -n1 || true)"
+  session_preflight="$repo_dir/runs/$session_run_id/preflight.json"
+  if [[ "$session_run_id" =~ ^run-[0-9]{8}-[0-9]{6}$ ]] && [ -f "$session_preflight" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"PASS"' "$session_preflight"; then
+    add rf_preflight PASS "RF preflight passed before the active session; not rerun while X310 is in use"
+  else
+    add rf_preflight FAIL "Active RF session has no passing preflight artifact; hardware probes skipped while X310 is in use"
+  fi
+  add hardware_detected NOT_TESTED "X310 discovery skipped while enb-x310 is using the SDR"
+  add ethernet_link NOT_TESTED "Ethernet probe skipped while enb-x310 is using the SDR"
+  add uhd_available NOT_TESTED "UHD probe skipped while enb-x310 is using the SDR"
+  add uhd_fpga_compatible NOT_TESTED "FPGA probe skipped while enb-x310 is using the SDR"
+else
+  "$(dirname "${BASH_SOURCE[0]}")/hardware-check.sh" >"$run_dir/logs/hardware-check.log" 2>&1 && add hardware_detected PASS "X310 detected" || add hardware_detected FAIL "X310 not detected"
+  grep -q 'ethernet_link.*PASS' "$run_dir/logs/hardware-check.log" && add ethernet_link PASS "compatible local subnet found" || add ethernet_link WARNING "ethernet not proven compatible"
+  "$(dirname "${BASH_SOURCE[0]}")/uhd-check.sh" >"$run_dir/logs/uhd-check.log" 2>&1 && add uhd_available PASS "UHD probe passed" || add uhd_available FAIL "UHD probe failed"
+  "$(dirname "${BASH_SOURCE[0]}")/fpga-check.sh" "$run_dir/logs/uhd-check.log" >"$run_dir/logs/fpga-check.log" 2>&1 && add uhd_fpga_compatible PASS "FPGA compatible" || add uhd_fpga_compatible FAIL "FPGA compatibility unknown"
+  REQUIRE_RF_READY=true LAIN5G_RUN_ID="$run_id" "$(dirname "${BASH_SOURCE[0]}")/preflight.sh" >"$run_dir/logs/preflight.log" 2>&1 && add rf_preflight PASS "RF preflight passed" || add rf_preflight FAIL "RF preflight failed; inspect preflight.log"
+fi
 for svc in mme hss sgwc sgwu pgwc pgwu pcrf; do running "$svc" || epc_fail=1; done; [ "${epc_fail:-0}" = 0 ] && add epc_services PASS "EPC services running" || add epc_services FAIL "EPC incomplete"
 running mme && add mme_ready PASS "MME running" || add mme_ready FAIL "MME not running"
 for svc in ims-database pcscf icscf scscf dns; do running "$svc" || ims_fail=1; done; [ "${ims_fail:-0}" = 0 ] && add ims_services PASS "Compact IMS infrastructure services running" || add ims_services FAIL "Compact IMS infrastructure incomplete"
-REQUIRE_RF_READY=true LAIN5G_RUN_ID="$run_id" "$(dirname "${BASH_SOURCE[0]}")/preflight.sh" >"$run_dir/logs/preflight.log" 2>&1 && add rf_preflight PASS "RF preflight passed" || add rf_preflight FAIL "RF preflight failed; inspect preflight.log"
 if running enb-x310; then
   add enb_started PASS "enb-x310 is currently running"
   started_at="$(docker inspect -f '{{.State.StartedAt}}' lain5g-lab-4g-lte-x310-enb 2>/dev/null || true)"

@@ -70,6 +70,12 @@ def test_x310_rf_start_requires_guardrails():
 def test_x310_validation_does_not_reuse_inactive_rf_logs():
     validate = (DEPLOY / "x310" / "scripts" / "validate.sh").read_text(encoding="utf-8")
 
+    assert 'if running enb-x310; then rf_session_active=true; fi' in validate
+    assert 'UHD probe skipped while enb-x310 is using the SDR' in validate
+    assert 'not rerun while X310 is in use' in validate
+    assert 'add rf_preflight FAIL "Active RF session has no passing preflight artifact' in validate
+    assert validate.index('if [ "$rf_session_active" = true ]; then') < validate.index('hardware-check.sh" >"$run_dir/logs/hardware-check.log')
+    assert validate.index('if [ "$rf_session_active" = true ]; then') < validate.index('REQUIRE_RF_READY=true')
     assert 'add enb_started NOT_TESTED "No active RF session' in validate
     assert 'add s1_setup NOT_TESTED "No active RF session' in validate
     assert 'add auto_stop NOT_TESTED "No current RF session lifecycle' in validate
