@@ -1,0 +1,59 @@
+{
+  "@context": "https://w3id.org/codemeta/3.0",
+  "@type": "SoftwareSourceCode",
+  "name": "OpenLain5G",
+  "description": "OpenLain5G is a modular framework for reproducible 4G LTE and 5G SA mobile network laboratories. It deploys and manages open-source RAN, core, IMS, and simulation components through Docker Compose, command-line, and web interfaces, with customizable software scenarios, guarded X-Series USRP workflows, automated validation, and traceable run evidence.",
+  "version": "1.1.5",
+  "datePublished": "2026-08-17",
+  "codeRepository": "https://github.com/guallycanazas/Lain5G",
+  "url": "https://github.com/guallycanazas/Lain5G",
+  "license": "https://spdx.org/licenses/MIT",
+  "author": [
+    {
+      "@type": "Person",
+      "givenName": "Willian Roy",
+      "familyName": "Canazas Rosas",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "National University of San Agustin of Arequipa"
+      }
+    },
+    {
+      "@type": "Person",
+      "givenName": "Manuel Ismael",
+      "familyName": "Prieto Tito",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "National University of San Agustin of Arequipa"
+      }
+    },
+    {
+      "@type": "Person",
+      "givenName": "Alberth Ronal",
+      "familyName": "Tamo Calla",
+      "affiliation": {
+        "@type": "Organization",
+        "name": "National University of San Agustin of Arequipa"
+      }
+    }
+  ],
+  "programmingLanguage": [
+    "Python",
+    "TypeScript",
+    "Shell"
+  ],
+  "runtimePlatform": "GNU/Linux with Docker Engine and Docker Compose v2",
+  "applicationCategory": "Research software",
+  "keywords": [
+    "4G LTE",
+    "5G SA",
+    "Open5GS",
+    "UERANSIM",
+    "USRP",
+    "network experimentation",
+    "reproducibility"
+  ],
+  "developmentStatus": "https://www.repostatus.org/#active",
+  "issueTracker": "https://github.com/guallycanazas/Lain5G/issues",
+  "releaseNotes": "https://github.com/guallycanazas/Lain5G/releases/tag/v1.1.5"
+}

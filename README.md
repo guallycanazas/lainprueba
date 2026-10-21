@@ -1,0 +1,278 @@
+# OpenLain5G
+
+<div align="center">
+
+**Evidence-oriented orchestration for software 4G/5G networks and guarded X-Series USRP laboratory workflows**
+
+[![CI](https://github.com/guallycanazas/Lain5G/actions/workflows/ci.yml/badge.svg)](https://github.com/guallycanazas/Lain5G/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-v1.1.5-4051b5.svg)](https://github.com/guallycanazas/Lain5G/releases/tag/v1.1.5)
+[![Project source: MIT](https://img.shields.io/badge/project_source-MIT-d9a441.svg)](LICENSE.txt)
+[![Platform](https://img.shields.io/badge/platform-GNU%2FLinux_x86__64-2f6f62.svg)](docs/installation.md)
+[![Python](https://img.shields.io/badge/Python-%E2%89%A53.10-3776ab.svg)](src/backend/requirements.txt)
+
+[Spanish version](README.es.md) · [Documentation](#documentation) · [Public evidence](results/public/README.md) · [Citation](#citation)
+
+</div>
+
+OpenLain5G is a modular framework for reproducible 4G LTE and 5G SA mobile
+network laboratories. It deploys and manages open-source RAN, core, IMS, and
+simulation components through Docker Compose, a command-line interface, and a
+web application. Designed for research, testing, and education, it provides a
+customizable environment with software-only scenarios, guarded X-Series USRP
+workflows, declarative configuration, automated validation, and traceable run
+evidence.
+
+> **Release status:** [`v1.1.5`](https://github.com/guallycanazas/Lain5G/tree/v1.1.5)
+> is the latest immutable source release.
+
+> **Naming:** OpenLain5G is the current project name. The repository URL, `lain5g`
+> CLI, `LAIN5G_*` environment variables, profile IDs, and image names retain their
+> existing identifiers for compatibility.
+
+## 1. Install First
+
+On a GNU/Linux x86_64 host, obtain the source first. The command below requires
+Git; an archive download is an alternative when Git is not yet installed:
+
+```bash
+git clone https://github.com/guallycanazas/Lain5G.git
+cd Lain5G
+./install.sh
+```
+
+Before changing the machine, the complete plan can be inspected with:
+
+```bash
+./install.sh --dry-run
+```
+
+The installer automatically provisions hosts using `apt-get`, `dnf`, `pacman`,
+or `zypper`. Other distributions, rootless Docker installations, managed
+workstations, and nonstandard init systems must satisfy the documented
+prerequisites manually.
+
+| Installer step | Result |
+| --- | --- |
+| Development tools | Python 3 with `venv`, Node.js, npm, Git, GNU Make, and util-linux |
+| Container runtime | Docker Engine and Docker Compose v2 installed; daemon startup attempted where supported |
+| User access | Docker group membership configured only when the host uses that access model |
+| Private state | Ignored profile and application files created with restrictive permissions |
+| Components | All unique images required by the four public profiles downloaded |
+| RF behavior | No RF transmission; hardware operation remains separately authorized and fail-closed |
+
+If setup changed Docker-group membership and the current shell still lacks
+Docker access, log in again or start a shell with the updated group:
+
+```bash
+newgrp docker
+```
+
+Detailed prerequisites and the manual alternative are in
+[docs/installation.md](docs/installation.md).
+
+## 2. Operate OpenLain5G
+
+After installation, choose one of the two supported operator interfaces.
+
+### Option 1: Web application
+
+On a dedicated, trusted laboratory workstation, launch the operational web
+interface:
+
+```bash
+./lain5g app start --operations --open
+```
+
+Open **Scenarios**, choose a profile, and select **Run evidence check**. The
+overview displays an explicit proof chain and links to the associated run and
+sanitized live logs. Stop the application with:
+
+```bash
+./lain5g app stop
+```
+
+`--operations` grants the backend access to the Docker socket and project tree;
+use it only on a trusted host. For observation-only access, run
+`./lain5g app start --open`.
+
+### Option 2: Interactive CLI
+
+Start the guided terminal interface with:
+
+```bash
+./lain5g
+```
+
+Use its menus to prepare the machine, manage components, select a profile, and
+configure, start, inspect, validate, or stop a software network. RF-capable
+profiles retain their authorization, preflight, finite-duration, and emergency
+stop controls. Direct automation commands remain documented under
+[Installation](docs/installation.md) and the scenario-specific guides.
+
+## 3. Evidence, Not Green Containers
+
+```mermaid
+flowchart LR
+    A[Core services] -->|runtime checks| B[S1 or NG setup]
+    B -->|protocol logs| C[UE registration and session]
+    C -->|ip link and ip addr| D[UE tunnel and IPv4]
+    D -->|ping bound to tunnel| E[User-plane traffic]
+    classDef pass fill:#e6f6ed,stroke:#16834a,color:#123d27;
+    classDef evidence fill:#eef1ff,stroke:#5965c7,color:#252d68;
+    class A,E pass;
+    class B,C,D evidence;
+```
+
+Each stage becomes `PASS` only when all required checks report evidence. A
+running container never proves UE registration, an assigned address, user-plane
+traffic, RF emission, or over-air reception. For guarded USRP profiles, the
+visual chain separates hardware/UHD detection, RF preflight, core readiness, the
+time-limited eNB/gNB process, S1/NG evidence, and external UE evidence. Missing
+over-air UE evidence remains `NOT_TESTED`.
+
+<a id="canonical-capability-status"></a>
+
+## 4. Public Profiles
+
+| Profile | Mode | Integrated scope | Evidence boundary |
+| --- | --- | --- | --- |
+| `4g-lte-sim` | Software only | Open5GS EPC + srsENB/srsUE over ZMQ | Clean-VM sanitized summary: [14/14 `PASS`](results/public/4g-lte-sim/run-20260730-021702.json) |
+| `5g-sa` | Software only | Open5GS 5GC + UERANSIM gNB/UE + data PDU session | Clean-VM sanitized summary: [15/15 `PASS`](results/public/5g-sa-sim/run-20260730-021914.json) |
+| `4g-lte-x310` | Guarded RF | Open5GS EPC + compact IMS infrastructure + srsRAN eNB + compatible X-Series USRP | Guarded workflow with run-correlated local RF evidence |
+| `5g-sa-x310` | Guarded RF | Open5GS 5GC + compact IMS infrastructure + srsRAN Project gNB + compatible X-Series USRP | Guarded workflow with run-correlated local RF evidence |
+
+The current LTE and 5G SA summaries are sanitized validator records from a clean
+Ubuntu 24.04 virtual machine, not raw protocol traces. They identify
+[`59471947`](https://github.com/guallycanazas/Lain5G/commit/59471947da95783c1a85a4d18284360e4b6d898b)
+as the source commit executed. Historical VoLTE and VoNR signaling records and
+older snapshots remain under
+[`results/public/`](results/public/README.md). Five independent clean-host runs of
+v1.1.3 passed both software profiles; see the [sanitized cloud-reproduction
+summary](results/public/summaries/v1.1.3-cloud-five-run-20260818.md).
+
+SDR hardware, commercial UE, voice-media, and RF results use dedicated evidence
+scopes correlated with each authorized run. RF operation requires legal
+authorization, an isolated or cabled environment, attenuation, a reviewed
+profile, an exact confirmation phrase, a finite duration, and accessible
+emergency stop.
+
+## 5. Architecture
+
+```mermaid
+flowchart TB
+    U[Operator] --> CLI[CLI: lain5g]
+    U --> UI[React operator interface]
+    UI --> API[FastAPI control and observation API]
+    CLI --> O[Guarded scenario orchestrator]
+    API --> O
+    O --> P[Declarative profiles and private local state]
+    O --> C[Docker Compose scenarios]
+    C --> S4[4G LTE ZMQ simulation]
+    C --> S5[5G SA UERANSIM simulation]
+    C --> R4[Guarded 4G USRP]
+    C --> R5[Guarded 5G USRP]
+    O --> V[Scenario validators]
+    V --> RUNS[Run metadata, checks, and bounded logs]
+    RUNS --> UI
+```
+
+| Project area | Responsibility |
+| --- | --- |
+| [`src/backend/`](src/backend/) | Local FastAPI API, command allowlists, validation and run services |
+| [`src/frontend/`](src/frontend/) | React operator interface and evidence visualization |
+| [`deployments/`](deployments/) | Isolated Compose models, network configuration, and guarded scripts |
+| [`config/profiles/`](config/profiles/) | Declarative software and RF profile inputs |
+| [`results/public/`](results/public/README.md) | Reviewed, schema-validated, sanitized summaries |
+| `runs/` | Ignored local operational records that may contain sensitive information |
+
+## 6. Repository Verification
+
+After running the installer, execute the repository-wide safe gate:
+
+```bash
+make softwarex-check
+```
+
+The current gate passes **323 backend tests**, **51 frontend tests**, and **78%
+backend line coverage**, followed by TypeScript checking, a production frontend
+build, safe Compose rendering, profile validation, version and citation metadata
+checks, internal-link validation, public-result schema checks, release-artifact
+checks, and sensitive-file controls.
+
+GitHub Actions runs the same command on Ubuntu 24.04 with Python 3.12 and Node.js
+22. This gate does not start telecom scenarios, access SDR hardware, transmit RF,
+or reproduce historical network experiments. Operational evidence is generated
+separately by the scenario validators.
+
+### Release metadata
+
+| Item | Repository value |
+| --- | --- |
+| Current immutable release | [`v1.1.5`](https://github.com/guallycanazas/Lain5G/releases/tag/v1.1.5) |
+| Version control | Git and GitHub |
+| Project-source license | [MIT](LICENSE.txt), with separate upstream terms |
+| Languages | Python, TypeScript, and Shell |
+| Runtime | GNU/Linux x86_64, Docker Engine, Docker Compose v2 |
+| Citation metadata | [`CITATION.cff`](CITATION.cff) and [`codemeta.json`](codemeta.json) |
+| Reproducibility records | Version matrix, public-result schemas, partial SBOM, and CI |
+| Support | Best-effort GitHub Issues; private vulnerability reporting for sensitive security reports |
+
+## 7. Reproducibility and Security
+
+- Upstream source selections and image inputs are recorded in the
+  [version matrix](docs/reproducibility/version-matrix.md).
+- Dependency policy and known mutable inputs are documented in
+  [dependency policy](docs/reproducibility/dependency-policy.md).
+- The included CycloneDX file is a
+  [partial application-manifest SBOM](docs/release/sbom-status.md), not a complete
+  container or operating-system SBOM.
+- Generated subscriber credentials and RF/operator state remain in ignored local
+  files with restrictive permissions.
+- Public records are schema-validated and sanitized; private run logs must be
+  reviewed before any publication.
+- RF controls are fail-closed and excluded from automated CI execution.
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Installation](docs/installation.md)
+- [4G software simulation](docs/4g_simulation.md)
+- [5G SA software simulation](docs/5g_sa.md)
+- [Configuration](docs/configuration.md)
+- [Architecture](docs/architecture.md)
+- [Validation and evidence semantics](docs/validation.md)
+- [Public results](results/public/README.md)
+- [RF safety](docs/rf_safety.md)
+- [Secure local deployment](docs/security/local-deployment.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Changelog](CHANGELOG.md)
+
+## Authors
+
+- **Willian Roy Canazas Rosas**
+- **Manuel Ismael Prieto Tito**
+- **Alberth Ronal Tamo Calla**
+
+Software-release affiliation for all authors: **National University of San Agustin of
+Arequipa**. See [`AUTHORS.md`](AUTHORS.md).
+
+## Citation
+
+Citation metadata is available in [`CITATION.cff`](CITATION.cff) and
+[`codemeta.json`](codemeta.json).
+
+## License
+
+Project-authored source is licensed under the [MIT License](LICENSE.txt). Upstream
+software, imported configuration, databases, and container images retain their
+own licenses and redistribution terms. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the
+[redistribution status](docs/legal/redistribution-status.md).
+
+## Support and Security
+
+Use [GitHub Issues](https://github.com/guallycanazas/Lain5G/issues) for
+reproducible, non-sensitive bugs. Do not publish secrets, subscriber identifiers,
+private addresses, RF plans, tokens, authorization records, or private logs. Use
+GitHub Private Vulnerability Reporting for sensitive security reports and read
+[`SUPPORT.md`](SUPPORT.md) before sharing diagnostics.
