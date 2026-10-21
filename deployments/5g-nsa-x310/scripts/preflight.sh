@@ -11,6 +11,14 @@ manifest="$scenario_dir/rf/safety-manifest.yaml"
 channel="$scenario_dir/rf/channel-plan.yaml"
 require_rf="${REQUIRE_RF_READY:-false}"
 status=PASS
+rf_session_active=false
+[ -f "$scenario_dir/.rf-active" ] && rf_session_active=true
+if [ "$rf_session_active" = false ] && docker ps --filter name=lain5g-lab-5g-nsa-x310-enb --filter status=running -q | grep -q .; then rf_session_active=true; fi
+session_run_id=""
+if [ "$rf_session_active" = true ]; then
+  session_run_id="$(sed -n 's/^run_id=//p' "$scenario_dir/.rf-active" 2>/dev/null | head -n1 || true)"
+  status=NOT_TESTED
+fi
 add(){ printf '%-30s %s %s\n' "$1" "$2" "$3"; [ "$2" = FAIL ] && status=FAIL; return 0; }
 field(){ sed -n "s/^$1:[[:space:]]*//p" "$2" 2>/dev/null | tr -d '"' | head -n1; }
 
@@ -50,7 +58,17 @@ else
   [ "$nr_rf_path" = true ] && add nr_rf_path PASS "second RF path declared connected" || add nr_rf_path WARNING "NR rf_port=1 path is disconnected"
 fi
 
-"$script_dir/hardware-check.sh" >/tmp/lain5g-nsa-hardware-check.log 2>&1 && add hardware PASS "dual-chain hardware reported" || add hardware FAIL "dual-chain hardware check failed"
+if [ "$rf_session_active" = true ]; then
+  session_hardware="$scenario_dir/../../runs/$session_run_id/logs/hardware-check.log"
+  if [[ "$session_run_id" =~ ^run-[0-9]{8}-[0-9]{6}$ ]] && [ -f "$session_hardware" ] && grep -Eq '^dual_radio[[:space:]]+PASS' "$session_hardware"; then
+    add hardware PASS "dual-chain X310 evidence reused from active session preflight; live probe skipped"
+  else
+    add hardware NOT_TESTED "hardware/UHD probes skipped while NSA eNB uses the SDR; no passing session evidence found"
+  fi
+else
+  "$script_dir/hardware-check.sh" >/tmp/lain5g-nsa-hardware-check.log 2>&1 && add hardware PASS "dual-chain hardware reported" || add hardware FAIL "dual-chain hardware check failed"
+fi
 
 echo "status=$status"
+[ "$status" = NOT_TESTED ] && exit 0
 [ "$status" = PASS ]

@@ -121,6 +121,18 @@ def test_compact_ims_is_local_and_always_on():
     assert "ims_services PASS" in validate
 
 
+def test_active_sa_validation_reuses_session_preflight_without_probing_x310():
+    validate = (DEPLOY / "scripts" / "validate.sh").read_text(encoding="utf-8")
+    start = (DEPLOY / "scripts" / "start-gnb.sh").read_text(encoding="utf-8")
+
+    assert 'if [ -f "$scenario_dir/.rf-active" ] || running gnb-x310' in validate
+    assert 'session_run_dir="$repo_dir/runs/$session_run_id"' in validate
+    assert "live discovery skipped" in validate
+    assert "UHD probe skipped while gnb-x310 is using the SDR" in validate
+    assert '"$run_dir/preflight.log"' in start
+    assert '"$run_dir/logs/hardware-check.log"' in start
+
+
 def test_5g_scenarios_stop_each_other_and_release_the_shared_address_space():
     stop = (DEPLOY / "scripts" / "stop.sh").read_text(encoding="utf-8")
     start_core = (DEPLOY / "scripts" / "start-core.sh").read_text(encoding="utf-8")

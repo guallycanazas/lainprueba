@@ -21,15 +21,18 @@ flock -n -x 9 || { echo "5G RF start refused: another RF start is in progress" >
 for marker in "$repo_dir/deployments/4g-volte/x310/.rf-active" "$repo_dir/deployments/5g-sa-x310/.rf-active" "$repo_dir/deployments/5g-nsa-x310/.rf-active"; do
   [ ! -f "$marker" ] || { echo "5G RF start refused: another RF session is active" >&2; exit 2; }
 done
-REQUIRE_RF_READY=true "$script_dir/preflight.sh"
-# Let the UHD probe release the X310 management channel before the gNB opens it.
-sleep 5
 maximum_duration="$(sed -n 's/^maximum_duration_seconds:[[:space:]]*//p' "$manifest" | head -n1)"
 duration="${LAIN5G_RF_DURATION_SECONDS:-$maximum_duration}"
 [[ "$duration" =~ ^[0-9]+$ ]] && [ "$duration" -gt 0 ] && [ "$duration" -le "$maximum_duration" ] || { echo "5G RF start refused: duration must be 1..${maximum_duration} seconds" >&2; exit 2; }
 run_id="${LAIN5G_RUN_ID:-run-$(date -u +%Y%m%d-%H%M%S)}"
 run_dir="$repo_dir/runs/$run_id"
 mkdir -p "$run_dir/logs"
+REQUIRE_RF_READY=true "$script_dir/preflight.sh" >"$run_dir/preflight.log" 2>&1 || { cat "$run_dir/preflight.log"; exit 1; }
+cp /tmp/lain5g-5g-x310-hardware-check.log "$run_dir/logs/hardware-check.log" 2>/dev/null || true
+cp /tmp/lain5g-5g-x310-find-devices.log "$run_dir/logs/find-devices.log" 2>/dev/null || true
+cp /tmp/lain5g-5g-x310-usrp-probe.log "$run_dir/logs/usrp-probe.log" 2>/dev/null || true
+# Let the UHD probe release the X310 management channel before the gNB opens it.
+sleep 5
 mkdir -p "$scenario_dir/gnb/.runtime"
 
 if command -v cpupower >/dev/null 2>&1; then

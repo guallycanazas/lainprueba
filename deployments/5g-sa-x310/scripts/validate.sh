@@ -18,6 +18,8 @@ add(){ checks+=("$1|$2|$3"); printf '%-28s %s %s\n' "$1" "$2" "$3"; }
 json_escape(){ local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; printf '%s' "$s"; }
 compose(){ (cd "$scenario_dir" && docker compose --env-file "$env_file" -f docker-compose.yml --profile rf "$@"); }
 running(){ [ -n "$(compose ps --status running -q "$1" 2>/dev/null)" ]; }
+rf_session_active=false
+if [ -f "$scenario_dir/.rf-active" ] || running gnb-x310; then rf_session_active=true; fi
 write_json(){
   local status="PASS"
   for check in "${checks[@]}"; do IFS='|' read -r _ state _ <<< "$check"; [ "$state" = FAIL ] && status="FAIL"; done
@@ -35,13 +37,38 @@ write_json(){
   [ "$status" = PASS ]
 }
 
-"$script_dir/hardware-check.sh" "$env_file" >"$run_dir/logs/hardware-check.log" 2>&1 && {
-  add hardware_detected PASS "Compatible X300/X310 hardware detected"
-  add uhd_available PASS "UHD hardware probe passed"
-} || {
-  add hardware_detected FAIL "Compatible X300/X310 hardware was not detected"
-  add uhd_available FAIL "UHD hardware probe failed"
-}
+if [ "$rf_session_active" = true ]; then
+  session_run_id="$(sed -n 's/^run_id=//p' "$scenario_dir/.rf-active" 2>/dev/null | head -n1 || true)"
+  session_run_valid=false
+  [[ "$session_run_id" =~ ^run-[0-9]{8}-[0-9]{6}$ ]] && session_run_valid=true
+  session_run_dir="$repo_dir/runs/$session_run_id"
+  session_preflight="$session_run_dir/preflight.log"
+  session_hardware="$session_run_dir/logs/hardware-check.log"
+  if [[ "$session_run_id" =~ ^run-[0-9]{8}-[0-9]{6}$ ]] && [ -f "$session_preflight" ] && grep -Eq '^status=PASS$' "$session_preflight"; then
+    add rf_preflight PASS "Preflight passed for active session $session_run_id; not rerun while X310 is in use"
+  else
+    add rf_preflight NOT_TESTED "No passing preflight artifact found for active X310 session; live probe skipped"
+  fi
+  if [ "$session_run_valid" = true ] && [ -f "$session_hardware" ] && grep -Eq '^uhd_find_devices[[:space:]]+PASS' "$session_hardware"; then
+    add hardware_detected PASS "X300/X310 detected during preflight for $session_run_id; live discovery skipped"
+  else
+    add hardware_detected NOT_TESTED "X310 discovery skipped while gnb-x310 is using the SDR; no passing session evidence found"
+  fi
+  if [ "$session_run_valid" = true ] && [ -f "$session_hardware" ] && grep -Eq '^uhd_version[[:space:]]+PASS' "$session_hardware" && grep -Eq '^model[[:space:]]+PASS' "$session_hardware"; then
+    add uhd_available PASS "UHD probe passed during session preflight; live probe skipped"
+  else
+    add uhd_available NOT_TESTED "UHD probe skipped while gnb-x310 is using the SDR; no passing session evidence found"
+  fi
+else
+  "$script_dir/hardware-check.sh" "$env_file" >"$run_dir/logs/hardware-check.log" 2>&1 && {
+    add hardware_detected PASS "Compatible X300/X310 hardware detected"
+    add uhd_available PASS "UHD hardware probe passed"
+  } || {
+    add hardware_detected FAIL "Compatible X300/X310 hardware was not detected"
+    add uhd_available FAIL "UHD hardware probe failed"
+  }
+  REQUIRE_RF_READY=true "$script_dir/preflight.sh" >"$run_dir/logs/preflight.log" 2>&1 && add rf_preflight PASS "RF preflight passed" || add rf_preflight FAIL "RF preflight failed; inspect preflight.log"
+fi
 
 for service in mongo nrf ausf udm udr pcf upf smf amf; do running "$service" || core_fail=1; done
 [ "${core_fail:-0}" = 0 ] && add core_services PASS "5G core services running" || add core_services FAIL "5G core services incomplete"
@@ -50,7 +77,6 @@ running amf && add amf_ready PASS "AMF running" || add amf_ready FAIL "AMF not r
 for service in ims-database pcscf icscf scscf dns; do running "$service" || ims_fail=1; done
 [ "${ims_fail:-0}" = 0 ] && add ims_services PASS "Compact IMS infrastructure services running" || add ims_services FAIL "Compact IMS infrastructure incomplete"
 
-REQUIRE_RF_READY=true "$script_dir/preflight.sh" >"$run_dir/logs/preflight.log" 2>&1 && add rf_preflight PASS "RF preflight passed" || add rf_preflight FAIL "RF preflight failed; inspect preflight.log"
 if running gnb-x310; then
   add gnb_started PASS "gnb-x310 is currently running"
   started_at="$(docker inspect -f '{{.State.StartedAt}}' lain5g-lab-5g-sa-x310-gnb 2>/dev/null || true)"

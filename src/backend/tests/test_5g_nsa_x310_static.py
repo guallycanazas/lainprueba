@@ -75,3 +75,14 @@ def test_nsa_profile_and_preflight_use_effective_values():
     assert 'field lte_dl_earfcn "$channel"' in preflight
     assert 'field nr_dl_arfcn "$channel"' in preflight
     assert '"$scenario_dir/.env"' in hardware
+
+
+def test_active_nsa_preflight_skips_live_sdr_probes_and_reuses_run_evidence():
+    preflight = (DEPLOY / "scripts" / "preflight.sh").read_text(encoding="utf-8")
+    start = (DEPLOY / "scripts" / "start-rf.sh").read_text(encoding="utf-8")
+
+    assert '[ -f "$scenario_dir/.rf-active" ] && rf_session_active=true' in preflight
+    assert "hardware/UHD probes skipped while NSA eNB uses the SDR" in preflight
+    assert "dual-chain X310 evidence reused from active session preflight" in preflight
+    assert '"$run_dir/preflight.log"' in start
+    assert '"$run_dir/logs/hardware-check.log"' in start
